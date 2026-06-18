@@ -26,21 +26,29 @@ jobs:
           yes | sdkmanager --licenses || true
           sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Point Gradle to the Android SDK
-        run: echo "sdk.dir=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" > local.properties
-
-      - name: Download Gradle 8.7
-        run: |
-          curl -sSL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o gradle.zip
-          unzip -q gradle.zip
-          chmod +x ./gradle-8.7/bin/gradle
-
       - name: Build debug APK
-        run: ./gradle-8.7/bin/gradle assembleDebug --no-daemon --stacktrace
+        run: |
+          set -e
+          # Trouve le dossier du projet (celui qui contient settings.gradle), oÃ¹ qu'il soit
+          SETTINGS="$(find "$GITHUB_WORKSPACE" -name 'settings.gradle*' | head -n1)"
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::Aucun fichier settings.gradle trouve dans le depot."
+            exit 1
+          fi
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+          echo "Projet Gradle detecte : $PROJECT_DIR"
+          echo "sdk.dir=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" > "$PROJECT_DIR/local.properties"
+          curl -sSL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o "$RUNNER_TEMP/gradle.zip"
+          unzip -q "$RUNNER_TEMP/gradle.zip" -d "$RUNNER_TEMP"
+          GRADLE_BIN="$RUNNER_TEMP/gradle-8.7/bin/gradle"
+          chmod +x "$GRADLE_BIN"
+          cd "$PROJECT_DIR"
+          "$GRADLE_BIN" assembleDebug --no-daemon --stacktrace
+          echo "APK_PATH=$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.APK_PATH }}
           if-no-files-found: error
